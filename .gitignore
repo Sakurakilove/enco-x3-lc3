@@ -1,0 +1,11 @@
+/build/
+/lib/*.jar
+/local-logs/
+/local-*.properties
+*.p12
+*.jks
+*.keystore
+*.apk
+*.bak
+.env
+.DS_Store
