@@ -28,7 +28,7 @@ elif name=='timeout':
 elif name=='sleep': time.sleep(0.04)
 elif name=='pidof': pass
 elif name=='cmd': event('radio '+sys.argv[-1])
-elif name=='dumpsys': print('versionCode=17 minSdk=27')
+elif name=='dumpsys': print('versionCode=18 minSdk=27')
 elif name=='mktemp':
  import tempfile
  fd,p=tempfile.mkstemp(dir=work);os.close(fd);print(p)

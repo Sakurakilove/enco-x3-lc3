@@ -6,20 +6,22 @@
 
 ## 下载和验证状态
 
-[下载 v0.17 公开预览版](https://github.com/Sakurakilove/enco-x3-lc3/releases/tag/v0.17-public-preview)
+[下载 v0.18 公开预览版](https://github.com/Sakurakilove/enco-x3-lc3/releases/tag/v0.18-public-preview)
 
 | 版本 / 场景 | 验证情况 |
 | --- | --- |
 | v0.14，一加 11 + Enco X3 | 已实机确认双耳 LC3、耳机/手机音量控制、回盒后恢复连接 |
 | v0.14，完全断联后先取左耳再取右耳 | 用户单独手动测试，确认正常 |
 | LC3 音频证据 | 原生日志显示 48 kHz、10 ms、每耳 155 字节帧、两个独立 CIS，左右耳加密连接 |
-| v0.15 / v0.17 的地址配置和自动识别入口 | 已编译、签名校验和主机逻辑测试；尚未完成手机实测 |
+| v0.15 / v0.17 的地址配置和自动识别入口 | 主机逻辑测试通过；v0.17 已实机保存正确主地址 |
 | v0.14 后续重新配对场景 | 用户报告双耳音量异常；日志确认双耳 LE 已连接，但只有一个 VCP 成员 |
 | v0.17 分组控制恢复 | 修复策略就绪晚于 LE 连接时只尝试一次的时序缺口；通过主机测试，实机结果待确认 |
-| v0.17 一键界面和日志生命周期 | 已构建；模拟 Android 命令验证正常、失败、等待结束和 TERM 后关闭记录；实机待确认 |
+| v0.17 一键界面和日志生命周期 | 已实机启动、重启蓝牙并记录；本次缺少另一耳身份，双耳检查未通过，见 v0.18 修复 |
 | 其他机型、其他 ColorOS 版本、其他耳机 | 尚未验证 |
 
-v0.17 基于公开版可配置地址入口，增加整个原生耳机组的有界控制恢复和内置一键界面。它以 **Pre-release** 发布。v0.14 曾通过上述实机测试，后续也暴露出重配对时只连接一个 VCP 成员的问题；不能把早期通过结果当作所有重连场景均可靠。
+v0.18 提供可配置地址、原生耳机组的有界控制恢复、内置一键界面和日志导出。它以 **Pre-release** 发布。v0.14 曾通过上述实机测试，后续也暴露出重配对时只连接一个 VCP 成员的问题；不能把早期通过结果当作所有重连场景均可靠。
+
+v0.18 修复公开版首次配置时原生 CSIS 已报告配对成员、但模块尚未保存目标而遗漏另一耳身份的问题。v0.17 的最新实机日志显示双耳 LE/CSIP 均已连接，仅主耳 VCP 连接；模块配置缺少另一耳记录。现在只从原生 CSIS 的 CAP 组恢复已配对成员，并重新检查双耳控制。新增状态明细和一键导出日志；主机回归测试通过，手机效果待确认。
 
 ## 使用条件
 
@@ -31,7 +33,7 @@ v0.17 基于公开版可配置地址入口，增加整个原生耳机组的有�
 
 ## 安装和首次配置
 
-1. 从 Release 下载并安装 `Enco-X3-LC3-v0.17-public-preview.apk`。
+1. 从 Release 下载并安装 `Enco-X3-LC3-v0.18-public-preview.apk`。
 2. 在 LSPosed 启用 **Enco X3 LC3**，作用域勾选 **蓝牙 / com.android.bluetooth**。
 3. 先在系统蓝牙里正常配对 Enco X3，双耳保持盒外。
 4. 打开模块应用，点击唯一的 **「一键配置并恢复 LC3」** 按钮；首次使用授予 Root 权限。
@@ -51,6 +53,12 @@ Release 仍附带可选命令行工具，供诊断或恢复普通蓝牙使用；
 ```sh
 su -c 'sh /sdcard/Download/enco-lc3-control.sh setup'
 ```
+
+## 一键导出日志
+
+点击日志标题右侧 **「导出日志」**，保存到 `Download/enco-lc3-v0.18-日期-时间.txt`。运行中也可导出当前快照，流程结束后日志仍可导出；再次打开模块可查看上次记录。完整日志保存在模块私有目录，界面仅显示尾部，导出不受界面截断影响。开始新的配置流程会覆盖应用内的上次记录，已导出的文件保留。
+
+Android 10 以上使用系统 [MediaStore.Downloads](https://developer.android.com/training/data-storage/shared/media#access-your-own-media-files) 写入应用自己创建的文件；Android 8/9 使用保存权限。文件仅由用户点击时写入，不会自动上传；公开分享前请检查并隐藏无关地址、设备名称等信息。
 
 ## 恢复普通蓝牙和采集状态
 
@@ -140,6 +148,7 @@ python tests/verify-policy-recovery.py
 python tests/verify-target-config.py
 python tests/verify-control-recovery.py
 python tests/verify-setup-lifecycle.py
+python tests/verify-log-store.py
 bash build.sh
 ```
 

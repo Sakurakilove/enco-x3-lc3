@@ -39,7 +39,7 @@ configure_and_start() {
  if [ "$ADDRESS" != auto ]; then
   printf '%s\n' "$ADDRESS" | grep -Eq '^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$' || { echo '主地址格式不正确。' >&2; exit 2; }
  fi
- timeout 8 dumpsys package local.enco.lc3 | grep -q 'versionCode=17 ' || { echo '请先安装 v0.17，并在 LSPosed 启用模块、勾选蓝牙。' >&2; exit 2; }
+ timeout 8 dumpsys package local.enco.lc3 | grep -q 'versionCode=18 ' || { echo '请先安装 v0.18，并在 LSPosed 启用模块、勾选蓝牙。' >&2; exit 2; }
  restart_bluetooth
  new_command_file
  echo '正在识别已配对的 Enco X3，并保存主耳机地址。'
@@ -79,7 +79,7 @@ case "$ACTION" in
     echo '状态查询未成功，已停止本次流程。' >&2
     exit 3
    fi
-   if [ "$attempt" = 5 ] || [ "$attempt" = 10 ]; then echo '仍在等待双耳及控制服务，请保持耳机盒外。'; fi
+   cat "$command_file"
   done
   cat "$command_file"
   echo '等待结束：尚未确认双耳全部就绪，本次日志记录已停止。连接恢复任务可能仍在进行。' >&2

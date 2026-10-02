@@ -268,7 +268,45 @@ public final class Entry implements IXposedHookLoadPackage {
             requestTargetLeConnection(le, peer);
         } catch (Throwable e) { log("Bonded second member connection error: " + e); }
     }
+    private static boolean restoreNativeGroupPeer(ClassLoader loader) {
+        try {
+            if (TARGET == null || paused || manualDisconnect || verifiedPeer != null
+                || base().getBondState() != BluetoothDevice.BOND_BONDED) return false;
+            final String expectedTarget = TARGET;
+            Object le = getService(loader, "com.android.bluetooth.le_audio.LeAudioService", "getLeAudioService");
+            Object csip = getService(loader, "com.android.bluetooth.csip.CsipSetCoordinatorService", "getCsipSetCoordinatorService");
+            if (le == null || csip == null
+                || !Integer.valueOf(100).equals(XposedHelpers.callMethod(le, "getConnectionPolicy", base()))) return false;
+            int group = (Integer)XposedHelpers.callMethod(le, "getGroupId", base());
+            if (group < 0 || !realTargetGroup(csip, group)) return false;
+            // This is the native CSIS rank/member cache, including previously paired members.
+            Object members = XposedHelpers.callMethod(csip, "getGroupDevicesOrdered", group);
+            if (!(members instanceof java.util.List)) return false;
+            java.util.List<?> list = (java.util.List<?>)members;
+            if (list.size() != 2 || !list.contains(base())) return false;
+            BluetoothDevice peer = null;
+            for (Object member : list) {
+                if (!(member instanceof BluetoothDevice)) return false;
+                BluetoothDevice d = (BluetoothDevice)member;
+                if (target(d)) continue;
+                if (peer != null || d.getBondState() != BluetoothDevice.BOND_BONDED) return false;
+                Map<?, ?> groups = (Map<?, ?>)XposedHelpers.callMethod(csip, "getGroupUuidMapByDevice", d);
+                Object uuid = groups.get(Integer.valueOf(group));
+                if (uuid == null || !"00001853-0000-1000-8000-00805f9b34fb".equals(uuid.toString())) return false;
+                int leGroup = (Integer)XposedHelpers.callMethod(le, "getGroupId", d);
+                if (leGroup >= 0 && leGroup != group) return false;
+                peer = d;
+            }
+            if (peer == null || !expectedTarget.equals(TARGET) || verifiedPeer != null || paused || manualDisconnect) return false;
+            Object adapter = getService(loader, "com.android.bluetooth.btservice.AdapterService", "getAdapterService");
+            if (adapter == null || !prefs(adapter).edit().putString("verified_peer", peer.getAddress()).commit()) return false;
+            verifiedPeer = peer;
+            log("Restored already paired second member from native CSIS CAP group; group=" + group);
+            return true;
+        } catch (Throwable e) { log("Native cached member recovery error: " + e); return false; }
+    }
     private static void processKnownCandidates(ClassLoader loader, Object csip) {
+        if (restoreNativeGroupPeer(loader)) connectBondedPeer(loader, verifiedPeer);
         Map<?, ?> found = (Map<?, ?>)XposedHelpers.getObjectField(csip, "mFoundSetMemberToGroupId");
         for (Map.Entry<?, ?> entry : found.entrySet().toArray(new Map.Entry<?, ?>[0])) {
             preparePeer(loader, csip, (BluetoothDevice)entry.getKey(), (Integer)entry.getValue());
@@ -348,7 +386,9 @@ public final class Entry implements IXposedHookLoadPackage {
                         } else if ("local.enco.lc3.CHECK_CONTROLS".equals(intent.getAction())) {
                             boolean ready = bothGroupControlsReady(loader);
                             setResultCode(ready ? 1 : 0);
-                            setResultData(ready ? "Both LE members and native controls ready" : "Waiting for both LE members and native controls");
+                            String details = controlReadinessDetails(loader);
+                            setResultData((ready ? "READY: " : "PENDING: ") + details);
+                            log("Setup readiness: " + details);
                         } else if ("local.enco.lc3.RESUME".equals(intent.getAction())) {
                             if (!prefs(adapter).edit().putBoolean("paused", false).commit())
                                 throw new IllegalStateException("Could not persist resume");
@@ -532,7 +572,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     } catch (Throwable e) { log("Discovered-group enable error: " + e); }
                 }
             });
-            log("v0.17 explicit LE reconnect and native-verified second-member pairing hooks installed");
+            log("v0.18 explicit LE reconnect and native-verified second-member pairing hooks installed");
         } catch (Throwable e) { log("Recovery/peer hooks unavailable: " + e); }
     }
     private static boolean protectRealPeerDuringJoin(ClassLoader loader, BluetoothDevice peer) {
@@ -609,7 +649,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         }
                     }
                 });
-            log("v0.17 real second-member cleanup guard and bond observers installed");
+            log("v0.18 real second-member cleanup guard and bond observers installed");
         } catch (Throwable e) { log("Peer cleanup guard unavailable: " + e); }
     }
     private static void scheduleMainReconnect(final ClassLoader loader, final String reason) {
@@ -785,7 +825,9 @@ public final class Entry implements IXposedHookLoadPackage {
     }
     private static boolean repairConnectedGroupControls(ClassLoader loader) {
         try {
-            if (TARGET == null || paused || manualDisconnect || !selectedRealLe(loader, base())) return false;
+            if (TARGET == null || paused || manualDisconnect) return false;
+            restoreNativeGroupPeer(loader);
+            if (!selectedRealLe(loader, base())) return false;
             Object le = getService(loader, "com.android.bluetooth.le_audio.LeAudioService", "getLeAudioService");
             Object csip = getService(loader, "com.android.bluetooth.csip.CsipSetCoordinatorService", "getCsipSetCoordinatorService");
             Object vc = getService(loader, "com.android.bluetooth.vc.VolumeControlService", "getVolumeControlService");
@@ -806,6 +848,7 @@ public final class Entry implements IXposedHookLoadPackage {
     }
     private static boolean bothGroupControlsReady(ClassLoader loader) {
         try {
+            restoreNativeGroupPeer(loader);
             if (TARGET == null || paused || manualDisconnect || verifiedPeer == null
                 || !selectedRealLe(loader, base())) return false;
             // Keep repairing while waiting; a lone connected member is never stereo success.
@@ -844,6 +887,56 @@ public final class Entry implements IXposedHookLoadPackage {
                 finally { controlRecoveries.remove(scheduledTarget); }
             }
         }, "EncoGroupControls").start();
+    }
+    private static String connectionLabel(Object value) {
+        if (Integer.valueOf(2).equals(value)) return "已连";
+        if (Integer.valueOf(1).equals(value)) return "连接中";
+        if (Integer.valueOf(3).equals(value)) return "断开中";
+        if (Integer.valueOf(0).equals(value)) return "未连";
+        return "未知";
+    }
+    private static String controlReadinessDetails(ClassLoader loader) {
+        if (TARGET == null) return "主地址尚未配置";
+        if (paused || manualDisconnect) return "恢复已暂停或手动断开";
+        try {
+            Object le = getService(loader, "com.android.bluetooth.le_audio.LeAudioService", "getLeAudioService");
+            Object csip = getService(loader, "com.android.bluetooth.csip.CsipSetCoordinatorService", "getCsipSetCoordinatorService");
+            Object vc = getService(loader, "com.android.bluetooth.vc.VolumeControlService", "getVolumeControlService");
+            StringBuilder out = new StringBuilder();
+            BluetoothDevice[] devices = new BluetoothDevice[] {base(), verifiedPeer};
+            for (int i = 0; i < devices.length; i++) {
+                if (i != 0) out.append("; ");
+                out.append(i == 0 ? "主耳[" : "另一耳[");
+                BluetoothDevice d = devices[i];
+                if (d == null) { out.append("尚未由原生 CSIS 确认]"); continue; }
+                out.append("配对=").append(d.getBondState()).append(", ");
+                Object[] profiles = new Object[] {le, csip, vc};
+                String[] labels = new String[] {"LE", "CSIP", "VCP"};
+                for (int j = 0; j < profiles.length; j++) {
+                    out.append(labels[j]).append('=');
+                    if (profiles[j] == null) out.append("服务不可用");
+                    else {
+                        out.append(connectionLabel(XposedHelpers.callMethod(profiles[j], "getConnectionState", d)));
+                        out.append("/策略").append(XposedHelpers.callMethod(profiles[j], "getConnectionPolicy", d));
+                    }
+                    out.append(", ");
+                }
+                if (le != null) out.append("组=").append(XposedHelpers.callMethod(le, "getGroupId", d)).append(", ");
+                if (hasUuid(d.getUuids(), "0000180f-0000-1000-8000-00805f9b34fb")) {
+                    Object battery = getService(loader, "com.android.bluetooth.bas.BatteryService", "getBatteryService");
+                    out.append("BAS=").append(battery == null ? "服务不可用" : connectionLabel(XposedHelpers.callMethod(battery, "getConnectionState", d)));
+                } else out.append("BAS=未声明");
+                if (le != null) {
+                    for (String getter : new String[] {"getMcpService", "getTbsService"}) {
+                        Object server = XposedHelpers.callMethod(le, getter);
+                        out.append(", ").append(getter.equals("getMcpService") ? "媒体授权=" : "通话授权=");
+                        out.append(server == null ? "服务不可用" : XposedHelpers.callMethod(server, "getDeviceAuthorization", d));
+                    }
+                }
+                out.append(']');
+            }
+            return out.toString();
+        } catch (Throwable e) { return "状态查询错误: " + e; }
     }
     private static void installSelectedLeAndVolumeHooks(final ClassLoader loader) {
         try {
@@ -896,7 +989,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         if (family(p.args[0])) log("Family native unpair requested; transition=" + p.args[1] + "; origin=" + bluetoothOrigin());
                     }
                 });
-            log("v0.17 selected LE activation guard, native VCP connection and policy origin observers installed");
+            log("v0.18 selected LE activation guard, native VCP connection and policy origin observers installed");
         } catch (Throwable e) { log("Selected LE/volume hooks unavailable: " + e); }
     }
     private static boolean hasUuid(ParcelUuid[] ids, String expected) {
@@ -927,7 +1020,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     } catch (Throwable e) { log("Connection hook error: " + e); }
                 }
             });
-            log("v0.17 LE-advertising connection hook installed in " + p.processName);
+            log("v0.18 LE-advertising connection hook installed in " + p.processName);
         } catch (Throwable e) { log("Incompatible Bluetooth implementation; hook unavailable: " + e); }
         installRecoveryAndPeerHooks(p.classLoader);
         installPeerCleanupGuard(p.classLoader);
@@ -951,7 +1044,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             + ", size=" + call.args[2] + ", rank=" + call.args[3]);
                     }
                 });
-            log("v0.17 native CSIP observers installed");
+            log("v0.18 native CSIP observers installed");
         } catch (Throwable e) { log("Native CSIP observers unavailable: " + e); }
         try {
             Class<?> nativeLe = XposedHelpers.findClass("com.android.bluetooth.le_audio.LeAudioNativeInterface", p.classLoader);
@@ -965,7 +1058,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     if (targetBytes(call.args[1])) log("Target native LE connection event state=" + call.args[0]);
                 }
             });
-            log("v0.17 native LE connection observers installed");
+            log("v0.18 native LE connection observers installed");
         } catch (Throwable e) { log("Native LE observers unavailable: " + e); }
         try {
             XposedHelpers.findAndHookMethod("com.android.bluetooth.btservice.PhonePolicy", p.classLoader,

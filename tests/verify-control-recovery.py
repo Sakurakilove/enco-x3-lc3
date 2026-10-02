@@ -7,7 +7,9 @@ s=(root/'src/local/enco/lc3/Entry.java').read_text()
 def take(a,b): return s[s.index(a):s.index(b,s.index(a))]
 body=take('    private static boolean selectedRealLe(', '    private static final Set<String> controlRecoveries')
 body+=take('    private static boolean repairMemberControls(', '    private static void scheduleGroupControlRecovery(')
+body+=take('    private static boolean restoreNativeGroupPeer(', '    private static void processKnownCandidates(')
 body+=take('    private static boolean realTargetGroup(', '    private static void enableKnownGroupIfSelected(')
+body+=take('    private static String connectionLabel(', '    private static void installSelectedLeAndVolumeHooks(')
 body+=take('    private static boolean hasUuid(', '    private static boolean targetBytes(')
 harness=r'''
 import java.util.*;
@@ -16,6 +18,15 @@ public class ControlRecoveryCheck {
  static boolean paused,manualDisconnect;
  static BluetoothDevice main,verifiedPeer;
  static Service le,csip,vc,battery,mcp,tbs;
+ static Object adapter=new Object();
+ static boolean persist=true;
+ static Map<String,String> saved=new HashMap<>();
+ static class Prefs {
+  Prefs edit(){return this;} Prefs putString(String k,String v){if(persist)saved.put(k,v);return this;}
+  boolean commit(){return persist;}
+ }
+ static Prefs prefs(Object a){return new Prefs();}
+ static boolean target(Object d){return d instanceof BluetoothDevice&&TARGET!=null&&TARGET.equals(((BluetoothDevice)d).address);}
  static class ParcelUuid { String value; ParcelUuid(String s){value=s;} public String toString(){return value;} }
  static class BluetoothDevice {
   static final int BOND_BONDED=12;
@@ -25,6 +36,8 @@ public class ControlRecoveryCheck {
  }
  static class Service {
   String name; boolean started=true,admission=true,validGroup=true;
+  List<BluetoothDevice> members=new ArrayList<>();
+  Set<BluetoothDevice> excludedFromCap=new HashSet<>();
   Map<BluetoothDevice,Integer> states=new HashMap<>(),policies=new HashMap<>(),auth=new HashMap<>(),queues=new HashMap<>();
   Map<BluetoothDevice,Machine> machines=new HashMap<>();
   Service(String s){name=s;}
@@ -39,6 +52,7 @@ public class ControlRecoveryCheck {
  static boolean family(Object d){return d==main||d==verifiedPeer;}
  static void log(String s){}
  static Object getService(ClassLoader l,String cls,String getter){
+  if(cls.contains("btservice"))return adapter;
   if(cls.contains("le_audio"))return le;
   if(cls.contains("csip"))return csip;
   if(cls.contains(".vc."))return vc;
@@ -59,7 +73,8 @@ public class ControlRecoveryCheck {
    if(m.equals("getMcpService"))return mcp;
    if(m.equals("getTbsService"))return tbs;
    if(m.equals("getDesiredGroupSize"))return 2;
-   if(m.equals("getGroupUuidMapByDevice")){Map<Integer,ParcelUuid> map=new HashMap<>();if(s.validGroup)map.put(1,new ParcelUuid("00001853-0000-1000-8000-00805f9b34fb"));return map;}
+   if(m.equals("getGroupDevicesOrdered"))return new ArrayList<>(s.members);
+   if(m.equals("getGroupUuidMapByDevice")){Map<Integer,ParcelUuid> map=new HashMap<>();if(s.validGroup&&!s.excludedFromCap.contains(a[0]))map.put(1,new ParcelUuid("00001853-0000-1000-8000-00805f9b34fb"));return map;}
    BluetoothDevice d=(BluetoothDevice)a[0];
    switch(m){
     case "getConnectionState":return s.state(d);
@@ -75,7 +90,7 @@ public class ControlRecoveryCheck {
  }
 __PRODUCTION__
  static void reset(){
-  TARGET="main";paused=manualDisconnect=false;main=new BluetoothDevice("main");verifiedPeer=new BluetoothDevice("peer");
+  TARGET="main";paused=manualDisconnect=false;persist=true;saved.clear();main=new BluetoothDevice("main");verifiedPeer=new BluetoothDevice("peer");
   le=new Service("le");csip=new Service("csip");vc=new Service("vc");battery=new Service("battery");mcp=new Service("mcp");tbs=new Service("tbs");
   for(BluetoothDevice d:new BluetoothDevice[]{main,verifiedPeer}){le.states.put(d,2);csip.states.put(d,2);vc.states.put(d,2);}
  }
@@ -118,6 +133,27 @@ __PRODUCTION__
   reset();vc.states.put(verifiedPeer,0);vc.policies.put(verifiedPeer,0);check(!bothGroupControlsReady(null)&&queued(vc,verifiedPeer)==0,"disabled VCP reported full readiness");
   reset();verifiedPeer.group=2;check(!bothGroupControlsReady(null),"foreign peer reported stereo complete");
   reset();verifiedPeer.bond=10;check(!bothGroupControlsReady(null),"unbonded second member reported ready");
+  reset();BluetoothDevice realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer));verifiedPeer=null;vc.states.put(realPeer,0);
+  check(!bothGroupControlsReady(null)&&verifiedPeer==realPeer&&queued(vc,realPeer)==1&&"peer".equals(saved.get("verified_peer")),"fresh public config missed native cached peer VCP");
+  vc.states.put(realPeer,2);check(bothGroupControlsReady(null),"recovered native cached stereo not ready");
+  reset();realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer));verifiedPeer=null;persist=false;
+  check(!restoreNativeGroupPeer(null)&&verifiedPeer==null,"failed persistence trusted cached peer");
+  reset();realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer));verifiedPeer=null;csip.excludedFromCap.add(realPeer);
+  check(!restoreNativeGroupPeer(null)&&verifiedPeer==null,"peer without native CAP membership accepted");
+  reset();realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer));verifiedPeer=null;realPeer.group=2;
+  check(!restoreNativeGroupPeer(null),"foreign LE group cached peer accepted");
+  reset();realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer));verifiedPeer=null;realPeer.bond=10;
+  check(!restoreNativeGroupPeer(null),"unpaired cache member trusted");
+  reset();realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer,new BluetoothDevice("other")));verifiedPeer=null;
+  check(!restoreNativeGroupPeer(null),"ambiguous cached members accepted");
+  reset();realPeer=verifiedPeer;csip.members.addAll(Arrays.asList(main,realPeer));verifiedPeer=null;paused=true;
+  check(!restoreNativeGroupPeer(null),"paused cached peer recovery");
+  paused=false;manualDisconnect=true;check(!restoreNativeGroupPeer(null),"manual disconnect cached recovery");
+  manualDisconnect=false;le.policies.put(main,0);check(!restoreNativeGroupPeer(null),"disabled LE cached recovery");
+  reset();verifiedPeer=null;check(controlReadinessDetails(null).contains("尚未由原生 CSIS 确认"),"missing member diagnostic hidden");
+  reset();vc.states.put(verifiedPeer,0);String detail=controlReadinessDetails(null);
+  check(detail.contains("主耳[")&&detail.contains("另一耳[")&&detail.contains("VCP=未连"),"per-ear missing VCP detail hidden");
+  reset();paused=true;check(controlReadinessDetails(null).contains("暂停"),"pause diagnostic missing");
   System.out.println("PASS: production group control recovery: delayed policy/main VCP, no duplicate connect, native group/bond/admission, disabled profiles, CSIP, BAS and media/call authorization");
  }
 }
