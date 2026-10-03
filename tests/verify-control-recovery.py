@@ -9,13 +9,13 @@ body=take('    private static boolean selectedRealLe(', '    private static fina
 body+=take('    private static boolean repairMemberControls(', '    private static void scheduleGroupControlRecovery(')
 body+=take('    private static boolean restoreNativeGroupPeer(', '    private static void processKnownCandidates(')
 body+=take('    private static boolean realTargetGroup(', '    private static void enableKnownGroupIfSelected(')
-body+=take('    private static String connectionLabel(', '    private static void installSelectedLeAndVolumeHooks(')
+body+=take('    private static String connectionLabel(', '    private static void retryExplicitLeWakeup(')
 body+=take('    private static boolean hasUuid(', '    private static boolean targetBytes(')
 harness=r'''
 import java.util.*;
 public class ControlRecoveryCheck {
  static String TARGET="main";
- static boolean paused,manualDisconnect;
+ static boolean paused,manualDisconnect,rememberedLe=true;
  static BluetoothDevice main,verifiedPeer;
  static Service le,csip,vc,battery,mcp,tbs;
  static Object adapter=new Object();
@@ -90,7 +90,7 @@ public class ControlRecoveryCheck {
  }
 __PRODUCTION__
  static void reset(){
-  TARGET="main";paused=manualDisconnect=false;persist=true;saved.clear();main=new BluetoothDevice("main");verifiedPeer=new BluetoothDevice("peer");
+  TARGET="main";paused=manualDisconnect=false;rememberedLe=true;persist=true;saved.clear();main=new BluetoothDevice("main");verifiedPeer=new BluetoothDevice("peer");
   le=new Service("le");csip=new Service("csip");vc=new Service("vc");battery=new Service("battery");mcp=new Service("mcp");tbs=new Service("tbs");
   for(BluetoothDevice d:new BluetoothDevice[]{main,verifiedPeer}){le.states.put(d,2);csip.states.put(d,2);vc.states.put(d,2);}
  }

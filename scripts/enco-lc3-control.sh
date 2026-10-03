@@ -39,7 +39,7 @@ configure_and_start() {
  if [ "$ADDRESS" != auto ]; then
   printf '%s\n' "$ADDRESS" | grep -Eq '^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$' || { echo '主地址格式不正确。' >&2; exit 2; }
  fi
- timeout 8 dumpsys package local.enco.lc3 | grep -q 'versionCode=18 ' || { echo '请先安装 v0.18，并在 LSPosed 启用模块、勾选蓝牙。' >&2; exit 2; }
+ timeout 8 dumpsys package local.enco.lc3 | grep -q 'versionCode=19 ' || { echo '请先安装 v0.19，并在 LSPosed 启用模块、勾选蓝牙。' >&2; exit 2; }
  restart_bluetooth
  new_command_file
  echo '正在识别已配对的 Enco X3，并保存主耳机地址。'

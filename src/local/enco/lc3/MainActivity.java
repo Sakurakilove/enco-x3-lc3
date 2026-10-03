@@ -52,7 +52,7 @@ public final class MainActivity extends Activity {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         page.addView(title);
         TextView hint = new TextView(this);
-        hint.setText("v0.18 · 公开预览版\n先正常配对 X3，并在 LSPosed 启用模块、勾选蓝牙。双耳取出后点击下方按钮，首次使用请授予 Root 权限。\n蓝牙会短暂重启，请等待流程结束。");
+        hint.setText("v0.19 · 公开预览版\n先正常配对 X3，并在 LSPosed 启用模块、勾选蓝牙。双耳取出后点击下方按钮，首次使用请授予 Root 权限。\n蓝牙会短暂重启，请等待流程结束。");
         hint.setTextSize(14); hint.setTextColor(Color.rgb(75, 86, 101));
         hint.setPadding(0, dp(12), 0, dp(16)); page.addView(hint);
         address = new EditText(this);
@@ -187,8 +187,8 @@ public final class MainActivity extends Activity {
                     byte[] body = logStore.snapshot();
                     if (body.length == 0) { showToast("还没有运行日志，请先执行一次配置。"); return; }
                     String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(new Date());
-                    String name = "enco-lc3-v0.18-" + stamp + ".txt";
-                    byte[] header = ("Enco X3 LC3 v0.18\n导出状态：" + (inProgress ? "运行中的日志快照" : "流程已停止") + "\n\n").getBytes("UTF-8");
+                    String name = "enco-lc3-v0.19-" + stamp + ".txt";
+                    byte[] header = ("Enco X3 LC3 v0.19\n导出状态：" + (inProgress ? "运行中的日志快照" : "流程已停止") + "\n\n").getBytes("UTF-8");
                     if (Build.VERSION.SDK_INT >= 29) {
                         ContentValues values = new ContentValues();
                         values.put("_display_name", name); values.put("mime_type", "text/plain");
