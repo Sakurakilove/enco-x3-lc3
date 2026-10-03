@@ -611,7 +611,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     } catch (Throwable e) { log("Discovered-group enable error: " + e); }
                 }
             });
-            log("v0.19 explicit LE reconnect and native-verified second-member pairing hooks installed");
+            log("v0.20 explicit LE reconnect and native-verified second-member pairing hooks installed");
         } catch (Throwable e) { log("Recovery/peer hooks unavailable: " + e); }
     }
     private static boolean protectRealPeerDuringJoin(ClassLoader loader, BluetoothDevice peer) {
@@ -688,7 +688,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         }
                     }
                 });
-            log("v0.19 real second-member cleanup guard and bond observers installed");
+            log("v0.20 real second-member cleanup guard and bond observers installed");
         } catch (Throwable e) { log("Peer cleanup guard unavailable: " + e); }
     }
     private static void scheduleMainReconnect(final ClassLoader loader, final String reason) {
@@ -1098,7 +1098,7 @@ public final class Entry implements IXposedHookLoadPackage {
                         if (family(p.args[0])) log("Family native unpair requested; transition=" + p.args[1] + "; origin=" + bluetoothOrigin());
                     }
                 });
-            log("v0.19 selected LE activation guard, native VCP connection and policy origin observers installed");
+            log("v0.20 selected LE activation guard, native VCP connection and policy origin observers installed");
         } catch (Throwable e) { log("Selected LE/volume hooks unavailable: " + e); }
     }
     private static boolean hasUuid(ParcelUuid[] ids, String expected) {
@@ -1129,7 +1129,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     } catch (Throwable e) { log("Connection hook error: " + e); }
                 }
             });
-            log("v0.19 LE-advertising connection hook installed in " + p.processName);
+            log("v0.20 LE-advertising connection hook installed in " + p.processName);
         } catch (Throwable e) { log("Incompatible Bluetooth implementation; hook unavailable: " + e); }
         installRecoveryAndPeerHooks(p.classLoader);
         installPeerCleanupGuard(p.classLoader);
@@ -1154,7 +1154,7 @@ public final class Entry implements IXposedHookLoadPackage {
                             + ", size=" + call.args[2] + ", rank=" + call.args[3]);
                     }
                 });
-            log("v0.19 native CSIP observers installed");
+            log("v0.20 native CSIP observers installed");
         } catch (Throwable e) { log("Native CSIP observers unavailable: " + e); }
         try {
             Class<?> nativeLe = XposedHelpers.findClass("com.android.bluetooth.le_audio.LeAudioNativeInterface", p.classLoader);
@@ -1168,7 +1168,7 @@ public final class Entry implements IXposedHookLoadPackage {
                     if (targetBytes(call.args[1])) log("Target native LE connection event state=" + call.args[0]);
                 }
             });
-            log("v0.19 native LE connection observers installed");
+            log("v0.20 native LE connection observers installed");
         } catch (Throwable e) { log("Native LE observers unavailable: " + e); }
         try {
             XposedHelpers.findAndHookMethod("com.android.bluetooth.btservice.PhonePolicy", p.classLoader,
