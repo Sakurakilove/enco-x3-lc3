@@ -469,7 +469,9 @@ public final class Entry implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(adapterClass, "disconnectAllEnabledProfiles", BluetoothDevice.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     if (family(p.args[0])) {
+                        leChoiceGeneration.incrementAndGet();
                         manualDisconnect = true;
+                        advertisingReady = false;
                         log("Explicit family disconnect requested; automatic retry suspended until next connect");
                     }
                 }
@@ -492,7 +494,8 @@ public final class Entry implements IXposedHookLoadPackage {
                     try {
                         restorePeerRecord(p.thisObject);
                         BluetoothDevice d = (BluetoothDevice)p.args[0];
-                        if (paused || manualDisconnect || !rememberedLe || !family(d) || d.getBondState() != BluetoothDevice.BOND_BONDED) return;
+                        if (paused || !rememberedLe || !family(d) || d.getBondState() != BluetoothDevice.BOND_BONDED) return;
+                        if (manualDisconnect) { attempted.set(false); lastWakeup = 0; }
                         manualDisconnect = false;
                         restoreSelectedMainPolicy(loader, "explicit family reconnect");
                         // A persisted peer address was learned from native CSIS SIRK matching.
@@ -511,6 +514,9 @@ public final class Entry implements IXposedHookLoadPackage {
                             Object hs = getService(loader, "com.android.bluetooth.hfp.HeadsetService", "getHeadsetService");
                             if (hs != null && Integer.valueOf(0).equals(XposedHelpers.callMethod(hs, "getConnectionState", d)))
                                 log("Classic signaling reconnect request=" + XposedHelpers.callMethod(hs, "connect", d));
+                            // HFP may still be connected after a quick disconnect/reconnect.
+                            // Retry after any cancelled worker has retired, even without a new HFP event.
+                            retryExplicitLeWakeup(loader);
                         }
                         log("Explicit reconnect request for selected LE device; repairing cached-UUID dead end");
                         requestTargetCsipConnection(loader, d);
@@ -759,8 +765,8 @@ public final class Entry implements IXposedHookLoadPackage {
                                             "com.android.bluetooth.hfp.HeadsetNativeInterface", loader,
                                             "atResponseString", BluetoothDevice.class, String.class, new XC_MethodHook() {
                                                 @Override protected void afterHookedMethod(MethodHookParam call) {
-                                                    if (target(call.args[0]) && String.valueOf(call.args[1]).startsWith("+MTK=")) {
-                                                        observed.set(Boolean.TRUE.equals(call.getResult()));
+                                                    if (d.equals(call.args[0]) && "+MTK=FFFAFB000101FF".equals(call.args[1])) {
+                                                        if (Boolean.TRUE.equals(call.getResult())) observed.set(true);
                                                         log("Native LE-advertising AT command=" + call.args[1]
                                                             + " sendResult=" + call.getResult() + "; peer acceptance requires discovery evidence");
                                                     }
